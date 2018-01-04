@@ -138,6 +138,8 @@ static NSString *MMDrawerOpenSideKey = @"MMDrawerOpenSide";
 @property (nonatomic, copy) MMDrawerGestureCompletionBlock gestureCompletion;
 @property (nonatomic, assign, getter = isAnimatingDrawer) BOOL animatingDrawer;
 
+@property (nonatomic) NSMutableSet *permanentChildControllers;
+
 @end
 
 @implementation MMDrawerController
@@ -203,6 +205,19 @@ static NSString *MMDrawerOpenSideKey = @"MMDrawerOpenSide";
     
     // set defualt panVelocityXAnimationThreshold
     [self setPanVelocityXAnimationThreshold:MMDrawerPanVelocityXAnimationThreshold];
+}
+
+- (void)addPermanentChild:(UIViewController *)childViewController
+{
+    if (!childViewController) {
+        return;
+    }
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _permanentChildControllers = [NSMutableSet set];
+    });
+    [_permanentChildControllers addObject:childViewController];
+    [self addChildViewController:childViewController];
 }
 
 #pragma mark - State Restoration
@@ -425,7 +440,11 @@ static NSString *MMDrawerOpenSideKey = @"MMDrawerOpenSide";
         if(animated == NO){
             [oldCenterViewController endAppearanceTransition];
         }
-        [oldCenterViewController removeFromParentViewController];
+        
+        if (![_permanentChildControllers containsObject:oldCenterViewController]) {
+            [oldCenterViewController removeFromParentViewController];
+        }
+        
     }
     
     _centerViewController = centerViewController;
@@ -695,14 +714,6 @@ static NSString *MMDrawerOpenSideKey = @"MMDrawerOpenSide";
     return NO;
 }
 
--(BOOL)shouldAutomaticallyForwardRotationMethods{
-    return NO;
-}
-
--(BOOL)automaticallyForwardAppearanceAndRotationMethodsToChildViewControllers{
-    return NO;
-}
-
 #pragma mark - View Lifecycle
 
 - (void)viewDidLoad {
@@ -760,10 +771,12 @@ static NSString *MMDrawerOpenSideKey = @"MMDrawerOpenSide";
     }
 }
 
-#pragma mark Rotation
+#pragma mark Transition
 
--(void)willRotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation duration:(NSTimeInterval)duration{
-    [super willRotateToInterfaceOrientation:toInterfaceOrientation duration:duration];
+- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator
+{
+    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+    
     //If a rotation begins, we are going to cancel the current gesture and reset transform and anchor points so everything works correctly
     BOOL gestureInProgress = NO;
     for(UIGestureRecognizer * gesture in self.view.gestureRecognizers){
@@ -776,55 +789,30 @@ static NSString *MMDrawerOpenSideKey = @"MMDrawerOpenSide";
             [self resetDrawerVisualStateForDrawerSide:self.openSide];
         }
     }
-    if ([self needsManualForwardingOfRotationEvents]){
-        for(UIViewController * childViewController in self.childViewControllers){
-            [childViewController willRotateToInterfaceOrientation:toInterfaceOrientation duration:duration];
+    [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext>  _Nonnull context) {
+        //We need to support the shadow path rotation animation
+        //Inspired from here: http://blog.radi.ws/post/8348898129/calayers-shadowpath-and-uiview-autoresizing
+        if(self.showsShadow){
+            CGPathRef oldShadowPath = self.centerContainerView.layer.shadowPath;
+            if(oldShadowPath){
+                CFRetain(oldShadowPath);
+            }
+            
+            [self updateShadowForCenterView];
+            
+            if (oldShadowPath) {
+                [self.centerContainerView.layer addAnimation:((^ {
+                    CABasicAnimation *transition = [CABasicAnimation animationWithKeyPath:@"shadowPath"];
+                    transition.fromValue = (__bridge id)oldShadowPath;
+                    transition.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+                    transition.duration = context.transitionDuration;
+                    return transition;
+                })()) forKey:@"transition"];
+                CFRelease(oldShadowPath);
+            }
         }
-    }
-    
-}
--(void)willAnimateRotationToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation duration:(NSTimeInterval)duration{
-    [super willAnimateRotationToInterfaceOrientation:toInterfaceOrientation duration:duration];
-    //We need to support the shadow path rotation animation
-    //Inspired from here: http://blog.radi.ws/post/8348898129/calayers-shadowpath-and-uiview-autoresizing
-    if(self.showsShadow){
-        CGPathRef oldShadowPath = self.centerContainerView.layer.shadowPath;
-        if(oldShadowPath){
-            CFRetain(oldShadowPath);
-        }
-        
-        [self updateShadowForCenterView];
-        
-        if (oldShadowPath) {
-            [self.centerContainerView.layer addAnimation:((^ {
-                CABasicAnimation *transition = [CABasicAnimation animationWithKeyPath:@"shadowPath"];
-                transition.fromValue = (__bridge id)oldShadowPath;
-                transition.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-                transition.duration = duration;
-                return transition;
-            })()) forKey:@"transition"];
-            CFRelease(oldShadowPath);
-        }
-    }
-    
-    if ([self needsManualForwardingOfRotationEvents]){
-        for(UIViewController * childViewController in self.childViewControllers){
-            [childViewController willAnimateRotationToInterfaceOrientation:toInterfaceOrientation duration:duration];
-        }
-    }
-}
 
--(BOOL)shouldAutorotate{
-    return YES;
-}
-
--(void)didRotateFromInterfaceOrientation:(UIInterfaceOrientation)fromInterfaceOrientation{
-    [super didRotateFromInterfaceOrientation:fromInterfaceOrientation];
-    if ([self needsManualForwardingOfRotationEvents]){
-        for(UIViewController * childViewController in self.childViewControllers){
-            [childViewController didRotateFromInterfaceOrientation:fromInterfaceOrientation];
-        }
-    }
+    } completion:NULL];
 }
 
 #pragma mark - Setters
@@ -1138,12 +1126,6 @@ static NSString *MMDrawerOpenSideKey = @"MMDrawerOpenSide";
     if([self respondsToSelector:@selector(setNeedsStatusBarAppearanceUpdate)]){
         [self performSelector:@selector(setNeedsStatusBarAppearanceUpdate)];
     }
-}
-
-#pragma mark - iOS 8 Rotation Helpers
-- (BOOL)needsManualForwardingOfRotationEvents{
-    BOOL isIOS8 = (floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_7_1);
-    return !isIOS8;
 }
 
 #pragma mark - Animation helpers

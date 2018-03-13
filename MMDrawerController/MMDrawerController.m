@@ -220,6 +220,12 @@ static NSString *MMDrawerOpenSideKey = @"MMDrawerOpenSide";
     [self addChildViewController:childViewController];
 }
 
+- (void)cleanUpPermanentChilds {
+    if (_permanentChildControllers.count) {
+        [_permanentChildControllers removeAllObjects];
+    }
+}
+
 #pragma mark - State Restoration
 - (void)encodeRestorableStateWithCoder:(NSCoder *)coder{
     [super encodeRestorableStateWithCoder:coder];

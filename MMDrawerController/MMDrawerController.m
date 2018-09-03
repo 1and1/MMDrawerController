@@ -75,6 +75,25 @@ static CAKeyframeAnimation * bounceKeyFrameAnimationForDistanceOnView(CGFloat di
 	return animation;
 }
 
+static inline CGFloat originXForDrawerOriginAndTargetOriginOffset(CGFloat originX, CGFloat targetOffset, CGFloat maxOvershoot){
+    CGFloat delta = ABS(originX - targetOffset);
+    CGFloat maxLinearPercentage = MMDrawerOvershootLinearRangePercentage;
+    CGFloat nonLinearRange = maxOvershoot * maxLinearPercentage;
+    CGFloat nonLinearScalingDelta = (delta - nonLinearRange);
+    CGFloat overshoot = nonLinearRange + nonLinearScalingDelta * nonLinearRange/sqrt(pow(nonLinearScalingDelta,2.f) + 15000);
+    
+    if (delta < nonLinearRange) {
+        return originX;
+    }
+    else if (targetOffset < 0) {
+        return targetOffset - round(overshoot);
+    }
+    else{
+        return targetOffset + round(overshoot);
+    }
+}
+
+
 static NSString *MMDrawerLeftDrawerKey = @"MMDrawerLeftDrawer";
 static NSString *MMDrawerRightDrawerKey = @"MMDrawerRightDrawer";
 static NSString *MMDrawerCenterKey = @"MMDrawerCenter";
@@ -1232,23 +1251,6 @@ static NSString *MMDrawerOpenSideKey = @"MMDrawerOpenSide";
     return originX;
 }
 
-static inline CGFloat originXForDrawerOriginAndTargetOriginOffset(CGFloat originX, CGFloat targetOffset, CGFloat maxOvershoot){
-    CGFloat delta = ABS(originX - targetOffset);
-    CGFloat maxLinearPercentage = MMDrawerOvershootLinearRangePercentage;
-    CGFloat nonLinearRange = maxOvershoot * maxLinearPercentage;
-    CGFloat nonLinearScalingDelta = (delta - nonLinearRange);
-    CGFloat overshoot = nonLinearRange + nonLinearScalingDelta * nonLinearRange/sqrt(pow(nonLinearScalingDelta,2.f) + 15000);
-    
-    if (delta < nonLinearRange) {
-        return originX;
-    }
-    else if (targetOffset < 0) {
-        return targetOffset - round(overshoot);
-    }
-    else{
-        return targetOffset + round(overshoot);
-    }
-}
 
 #pragma mark - Helpers
 -(void)setupGestureRecognizers{

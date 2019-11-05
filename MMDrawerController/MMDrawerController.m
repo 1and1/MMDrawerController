@@ -157,8 +157,6 @@ static NSString *MMDrawerOpenSideKey = @"MMDrawerOpenSide";
 @property (nonatomic, copy) MMDrawerGestureCompletionBlock gestureCompletion;
 @property (nonatomic, assign, getter = isAnimatingDrawer) BOOL animatingDrawer;
 
-@property (nonatomic) NSMutableSet *permanentChildControllers;
-
 @end
 
 @implementation MMDrawerController
@@ -224,19 +222,6 @@ static NSString *MMDrawerOpenSideKey = @"MMDrawerOpenSide";
     
     // set defualt panVelocityXAnimationThreshold
     [self setPanVelocityXAnimationThreshold:MMDrawerPanVelocityXAnimationThreshold];
-}
-
-- (void)addPermanentChild:(UIViewController *)childViewController
-{
-    if (!childViewController) {
-        return;
-    }
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        _permanentChildControllers = [NSMutableSet set];
-    });
-    [_permanentChildControllers addObject:childViewController];
-    [self addChildViewController:childViewController];
 }
 
 #pragma mark - State Restoration
@@ -459,11 +444,7 @@ static NSString *MMDrawerOpenSideKey = @"MMDrawerOpenSide";
         if(animated == NO){
             [oldCenterViewController endAppearanceTransition];
         }
-        
-        if (![_permanentChildControllers containsObject:oldCenterViewController]) {
-            [oldCenterViewController removeFromParentViewController];
-        }
-        
+        [oldCenterViewController removeFromParentViewController];
     }
     
     _centerViewController = centerViewController;
@@ -473,6 +454,7 @@ static NSString *MMDrawerOpenSideKey = @"MMDrawerOpenSide";
     [self.centerContainerView addSubview:self.centerViewController.view];
     [self.childControllerContainerView bringSubviewToFront:self.centerContainerView];
     [self.centerViewController.view setAutoresizingMask:UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight];
+    [self.centerViewController.view layoutIfNeeded];
     [self updateShadowForCenterView];
     
     if(animated == NO){
